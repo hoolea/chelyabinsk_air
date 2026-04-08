@@ -79,6 +79,84 @@ logger:
   logs:
     custom_components.chelyabinsk_air: debug
 ```
+## 🎛 Карточка
+
+<details>
+<summary>Нажмите, чтобы развернуть</summary>
+  
+<div align="center">
+                  
+  ![photo_2026-04-08_13-38-28](https://github.com/user-attachments/assets/ea82606c-a97f-4d6b-b040-adf658f5b824)
+
+</div>
+
+```yaml
+type: vertical-stack
+cards:
+  - type: markdown
+    content: |
+      ## 🌍 Челябинск — качество воздуха
+      📍 ГНС №73, пр. Победы, 198а
+
+  # 🌡️ Погода
+  - type: horizontal-stack
+    cards:
+      - type: gauge
+        entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_temperatura
+        name: Температура
+        min: -30
+        max: 40
+
+      - type: gauge
+        entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_vlazhnost
+        name: Влажность
+        min: 0
+        max: 100
+
+      - type: gauge
+        entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_atmosfernoe_davlenie
+        name: Давление
+        min: 720
+        max: 800
+
+  # 🌬️ Ветер
+  - type: entities
+    title: 🌬️ Ветер
+    entities:
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_skorost_vetra
+        name: Скорость
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_napravlenie_vetra
+        name: Направление (°)
+
+  # ☣️ Газы
+  - type: entities
+    title: ☣️ Загрязнение воздуха
+    show_header_toggle: false
+    entities:
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_ammiak
+        name: Аммиак
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_dioksid_azota
+        name: NO₂
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_oksid_azota
+        name: NO
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_dioksid_sery
+        name: SO₂
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_oksid_ugleroda
+        name: CO
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_serovodorod
+        name: H₂S
+
+  # 🌫️ Частицы
+  - type: entities
+    title: 🌫️ Частицы
+    entities:
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_pm2_5
+        name: PM2.5
+      - entity: sensor.cheliabinsk_gns_no73_pr_pobedy_d_198a_pm10
+        name: PM10
+```
+
+</details>
 
 ## 🤝 Вклад
 
