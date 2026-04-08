@@ -1,0 +1,10 @@
+{
+  "domain": "chelyabinsk_air",
+  "name": "Chelyabinsk Air",
+  "version": "1.0.0",
+  "documentation": "https://github.com/hoolea",
+  "dependencies": [],
+  "config_flow": true,
+  "codeowners": ["@hoolea"],
+  "requirements": ["python-slugify"]
+}
