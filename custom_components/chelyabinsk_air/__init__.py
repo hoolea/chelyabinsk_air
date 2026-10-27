@@ -1,192 +1,59 @@
-import asyncio
+"""Интеграция «Качество воздуха Челябинска»."""
+from __future__ import annotations
+
 import logging
-from datetime import timedelta
 
-import aiohttp
-import json
-
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.helpers.storage import Store
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .options_flow import ChelyabinskAirOptionsFlow
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN, SENSOR_MAP
+from .const import API_DEVICE_ID, CONF_STATIONS, DOMAIN
+from .coordinator import AirCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor"]
-
-API_URL = "https://emc.gov74.ru/uisem/portal/ad/services/getData.php?d=now&t=chelyabinsk-1"
-
-STORAGE_VERSION = 1
-STORAGE_KEY = f"{DOMAIN}_data"
+PLATFORMS = [Platform.SENSOR]
 
 
-def build_station_name(st):
-    return f"{st['name']}, №{st['nom']}, {st['place']}"
+def get_stations(entry: ConfigEntry) -> list[str]:
+    return list(entry.options.get(CONF_STATIONS, entry.data.get(CONF_STATIONS, [])))
 
 
-class AirDataManager:
-    def __init__(self, hass: HomeAssistant):
-        self.hass = hass
-        self.data = {}
-        self.store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
-        self._lock = asyncio.Lock()
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    coordinator = AirCoordinator(hass, entry)
 
-    async def async_load(self):
-        _LOGGER.debug("Loading data from storage")
+    # API отвечает ~5 минут, поэтому настройку не блокируем никогда:
+    # показываем кэш (или пустые сенсоры), а данные грузим в фоне.
+    cached = await coordinator.async_load_cache()
+    coordinator.async_set_updated_data(cached or {})
+    entry.async_create_background_task(
+        hass, coordinator.async_refresh(), f"{DOMAIN}_initial_refresh"
+    )
 
-        stored = await self.store.async_load()
+    entry.runtime_data = coordinator
 
-        if stored:
-            self.data = stored
-            _LOGGER.info("Loaded data from storage (%d stations)", len(stored))
-        else:
-            _LOGGER.warning("No stored data found")
-
-    async def async_save(self):
-        await self.store.async_save(self.data)
-
-    async def update_from_api(self):
-        async with self._lock:
-            _LOGGER.debug("Starting API update")
-
-            try:
-                session = async_get_clientsession(self.hass)
-                timeout = aiohttp.ClientTimeout(total=600)
-
-                _LOGGER.debug("Requesting API: %s", API_URL)
-
-                async with session.get(API_URL, timeout=timeout) as resp:
-                    _LOGGER.debug("Response status: %s", resp.status)
-                    _LOGGER.debug("Response headers: %s", dict(resp.headers))
-
-                    text = await resp.text()
-
-                    _LOGGER.debug("Response size: %d bytes", len(text))
-
-                    if text.strip().startswith("<"):
-                        _LOGGER.error("API returned HTML instead of JSON")
-                        _LOGGER.debug("Response preview: %s", text[:500])
-                        raise ValueError("HTML instead of JSON")
-                        
-                    _LOGGER.debug("Raw response: %s", text[:300])
-                    
-                    try:
-                        raw = json.loads(text)
-                    except Exception as e:
-                        _LOGGER.error("JSON decode failed: %s", e)
-                        _LOGGER.debug("Response preview: %s", text[:500])
-                        raise
-
-                parsed = self._parse(raw)
-
-                _LOGGER.debug("Parsed stations: %d", len(parsed))
-
-                self.data = parsed
-
-                await self.async_save()
-
-                _LOGGER.info("Data successfully updated from API")
-
-            except asyncio.TimeoutError:
-                _LOGGER.error("API request timeout (60s)")
-                _LOGGER.warning("Using cached data")
-
-            except Exception as e:
-                _LOGGER.error("API update failed: %s", e, exc_info=True)
-
-                if self.data:
-                    _LOGGER.warning("Fallback to cached data")
-
-    def _parse(self, raw):
-        result = {}
-
-        for block in raw.get("data", []):
-            for st in block.get("stations", []):
-                ind = st.get("ind")
-
-                if not ind:
-                    continue
-
-                if ind not in result:
-                    result[ind] = {}
-
-                # --- загрязнения ---
-                for s in st.get("si", []):
-                    key = SENSOR_MAP.get(s["name"])
-                    if key:
-                        result[ind][key] = s.get("val")
-
-                # --- метео ---
-                names = st.get("meteoParamsNames", [])
-                values = st.get("meteoParamsValues", [])
-
-                if values:
-                    last = values[-1]["vals"]
-
-                    for i, param in enumerate(names):
-                        key = SENSOR_MAP.get(param.strip('"'))
-                        if key and i < len(last):
-                            result[ind][key] = last[i]
-        return result
-
-
-class AirCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, manager: AirDataManager):
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=timedelta(minutes=3),
-        )
-        self.manager = manager
-
-    async def _async_update_data(self):
-        return self.manager.data
-
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    manager = AirDataManager(hass)
-    await manager.async_load()
-
-    coordinator = AirCoordinator(hass, manager)
-
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "manager": manager,
-        "coordinator": coordinator,
-    }
-    stations = entry.options.get("stations", entry.data.get("stations", []))
-    _LOGGER.debug("Configured stations: %s", stations)
-    
-    async def periodic_update():
-        _LOGGER.info("Background update task started")
-
-        while True:
-            _LOGGER.debug("Background update triggered")
-
-            await manager.update_from_api()
-
-            _LOGGER.debug("Sleeping 10 minutes")
-
-            await asyncio.sleep(600)
-
-    hass.loop.create_task(periodic_update())
+    _remove_stale_devices(hass, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    await coordinator.async_refresh()
-
+    entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+async def _async_reload_on_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
 
-    return unload_ok
+def _remove_stale_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Удаляет устройства (и их сенсоры) станций, которые убрали из настроек."""
+    stations = set(get_stations(entry))
+    registry = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+        station_ids = {ident for domain, ident in device.identifiers if domain == DOMAIN}
+        if station_ids and not station_ids & (stations | {API_DEVICE_ID}):
+            _LOGGER.debug("Удаляю устройство станции %s", station_ids)
+            registry.async_update_device(device.id, remove_config_entry_id=entry.entry_id)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

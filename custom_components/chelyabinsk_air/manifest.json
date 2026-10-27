@@ -1,10 +1,14 @@
 {
   "domain": "chelyabinsk_air",
   "name": "Chelyabinsk Air",
-  "version": "1.0.0",
-  "documentation": "https://github.com/hoolea",
-  "dependencies": [],
-  "config_flow": true,
   "codeowners": ["@hoolea"],
-  "requirements": ["python-slugify"]
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/hoolea/chelyabinsk_air",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/hoolea/chelyabinsk_air/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "1.1.0"
 }

@@ -1,51 +1,28 @@
-import voluptuous as vol
-import logging
+"""Изменение списка станций."""
+from __future__ import annotations
 
-from homeassistant import config_entries
-from homeassistant.helpers import config_validation as cv
+from typing import Any
 
-from .const import STATIONS
+from homeassistant.config_entries import ConfigFlowResult, OptionsFlow
 
-_LOGGER = logging.getLogger(__name__)
+from .const import CONF_STATIONS
 
 
-class ChelyabinskAirOptionsFlow(config_entries.OptionsFlow):
+class ChelyabinskAirOptionsFlow(OptionsFlow):
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        from .config_flow import stations_schema, validate_stations
 
-    async def async_step_init(self, user_input=None):
-        _LOGGER.debug("Options flow started")
-
+        errors: dict[str, str] = {}
         if user_input is not None:
-            _LOGGER.debug("User selected stations: %s", user_input["stations"])
+            stations, errors = validate_stations(user_input)
+            if not errors:
+                # Перезагрузку делает update listener в __init__.py —
+                # уже после того, как новые настройки сохранены.
+                return self.async_create_entry(data={CONF_STATIONS: stations})
 
-            valid_stations = [
-                s for s in user_input["stations"]
-                if s in STATIONS
-            ]
-
-            entry = self.async_create_entry(
-                title="",
-                data={"stations": valid_stations}
-            )
-
-            self.hass.async_create_task(
-                self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            )
-
-            return entry
-
-        current_stations = self.config_entry.options.get(
-            "stations",
-            self.config_entry.data.get("stations", [])
+        current = self.config_entry.options.get(
+            CONF_STATIONS, self.config_entry.data.get(CONF_STATIONS, [])
         )
-
-        _LOGGER.debug("Current stations: %s", current_stations)
-
         return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema({
-                vol.Required(
-                    "stations",
-                    default=current_stations
-                ): cv.multi_select(STATIONS)
-            }),
+            step_id="init", data_schema=stations_schema(list(current)), errors=errors
         )

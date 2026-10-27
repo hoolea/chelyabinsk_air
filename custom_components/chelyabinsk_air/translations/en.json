@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select stations",
+        "description": "Choose the monitoring stations to get data from.",
+        "data": { "stations": "Stations" }
+      }
+    },
+    "error": { "no_stations": "Select at least one station" },
+    "abort": { "already_configured": "The integration is already set up. Change stations in its options." }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Monitoring stations",
+        "description": "Checked stations will be added; unchecked ones are removed along with their sensors.",
+        "data": { "stations": "Stations" }
+      }
+    },
+    "error": { "no_stations": "Select at least one station" }
+  }
+}
